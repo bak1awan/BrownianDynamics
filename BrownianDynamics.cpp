@@ -5,6 +5,8 @@
 #include <ctime>
 #include <chrono>
 #include <string>
+#include <algorithm>
+#include <numeric>
 
 const int amount = 50;
 const double modellingTime = 0.01;
@@ -38,21 +40,39 @@ public:
 // Класс для шариков
 class Ball {
 public:
-	// Шарики содержат свои координаты и силы по X и Y
-	double m_x;
-	double m_y;
-	double Fx;
-	double Fy;
-	double Rx;
-	double Ry;
-	Ball() : m_x(0), m_y(0), Fx(0), Fy(0), Rx(0), Ry(0)
-	{
-	}
+	// Шарики содержат свои координаты и силы по X, Y и Z 
+	vector<double> coordinates;
 
-	Ball(double x, double y) : m_x(x), m_y(y), Fx(0), Fy(0), Rx(0), Ry(0)
+	vector<double> forces;
+
+	vector<double> randomForces;
+
+	Ball() : coordinates{ 0.0, 0.0, 0.0 }, forces{ 0.0, 0.0, 0.0 }, randomForces{ 0.0, 0.0, 0.0 }
 	{
 	}
 };
+
+void checkBorderConditions(vector<double>& coordinates, double size) {
+	for_each(coordinates.begin(), coordinates.end(), [size](double& cord) {
+		if (cord < 0.0) cord += size;
+		if (cord > size) cord -= size;
+	});
+}
+
+// Функция для рассчета расстояния между двумя шариками
+double calculateDistance(vector<double>& coordinates) {
+	return sqrt(accumulate(coordinates.begin(), coordinates.end(), 0.0, [](double acc, double cord) {
+		return acc + pow(cord, 2);
+	}));
+}
+
+vector<double> getDistance(const vector<double>& b1, const vector<double>& b2) {
+	vector<double> result(3);
+	for (int i = 0; i < result.size(); ++i) {
+		result[i] = b1[i] - b2[i];
+	}
+	return result;
+}
 
 // Класс для нашей ячейки
 class Box {
@@ -80,29 +100,29 @@ public:
 		do {
 			addable = true;
 			// Инициализируем координаты случайными числами
-			double rx = ((rand() * 2) / (static_cast<double>(RAND_MAX) + 1.0)) - 1.0;
-			double ry = ((rand() * 2) / (static_cast<double>(RAND_MAX) + 1.0)) - 1.0;
-			double r = sqrt(pow(rx, 2) + pow(ry, 2));
-			addingBall.m_x = prevBall.m_x + constants::LBOND * rx / r;
-			addingBall.m_y = prevBall.m_y + constants::LBOND * ry / r;
+			vector<double> r_coordinates(addingBall.coordinates.size());
 
-			if (addingBall.m_x < 0) addingBall.m_x = addingBall.m_x + m_size;
-			if (addingBall.m_x > m_size) addingBall.m_x = addingBall.m_x - m_size;
+			for_each(r_coordinates.begin(), r_coordinates.end(), [](double& cord) {
+				cord = ((rand() * 2.0) / (static_cast<double>(RAND_MAX) + 1.0)) - 1.0;
+			});
 
-			if (addingBall.m_y < 0) addingBall.m_y = addingBall.m_y + m_size;
-			if (addingBall.m_y > m_size) addingBall.m_y = addingBall.m_y - m_size;
+			auto r = calculateDistance(r_coordinates);
+
+			for (int i = 0; i < addingBall.coordinates.size(); i++) {
+				addingBall.coordinates[i] = prevBall.coordinates[i] + constants::LBOND * r_coordinates[i] / r;
+			}
+
+
+			checkBorderConditions(addingBall.coordinates, m_size);
+
 
 			// Для каждого добавленного шарика проверяем, не "залазиет" ли на него новый шарик
 			for (const Ball& ball : balls) {
-				double dx = addingBall.m_x - ball.m_x;
-				double dy = addingBall.m_y - ball.m_y;
+				vector<double> d_distance = getDistance(addingBall.coordinates, ball.coordinates);
 
-				if (dx < -m_size / 2.0) dx = dx + m_size;
-				if (dx > m_size / 2.0) dx = dx - m_size;
+				checkBorderConditions(d_distance, m_size / 2.0);
 
-				if (dy < -m_size / 2.0) dy = dy + m_size;
-				if (dy > m_size / 2.0) dy = dy - m_size;
-				if (sqrt(pow(dx, 2) + pow(dy, 2)) > constants::SIGMA) // изменить проверку с SIGMA: ГОТОВО
+				if (calculateDistance(d_distance) > constants::SIGMA) // изменить проверку с SIGMA: ГОТОВО
 					continue;
 				else {
 					addable = false;
@@ -118,7 +138,7 @@ public:
 // Функция для рассчета сил
 double F(double r) {
 	if (r > 0.5 * constants::SIGMA && r < constants::SIGMA * pow(2, 1.0 / 6.0))
-		return ((-48 * constants::EPSILON) / r) * (pow(constants::SIGMA / r, 12) - 0.5 * pow(constants::SIGMA / r, 6));
+		return ((-48.0 * constants::EPSILON) / r) * (pow(constants::SIGMA / r, 12) - 0.5 * pow(constants::SIGMA / r, 6));
 	else
 		return 0.0;
 }
@@ -127,89 +147,75 @@ double FBond(double r) {
 	return constants::KBOND * (r - constants::LBOND);
 }
 
-// Функция для рассчета расстояния между двумя шариками
-double calculateDistance(double dx, double dy) {
-	return sqrt(pow(dx, 2) + pow(dy, 2));
-}
-
 // Вычисляем силы между двумя шариками и меняем их
 void calculateForces(Ball& b1, Ball& b2, double size) {
-	// Посчитали dx и dy
-	double dx = b2.m_x - b1.m_x;
-	double dy = b2.m_y - b1.m_y;
+	// Посчитали dx и dy и dz
+	vector<double> d_distance = getDistance(b2.coordinates, b1.coordinates);
 
-	if (dx < -size / 2.0) dx = dx + size;
-	if (dx > size / 2.0) dx = dx - size;
+	checkBorderConditions(d_distance, size / 2);
 
-	if (dy < -size / 2.0) dy = dy + size;
-	if (dy > size / 2.0) dy = dy - size;
 	// Посчитали правильно расстояние между шариками
-	double r = calculateDistance(dx, dy);
+	double r = calculateDistance(d_distance);
 
 	// Посчитали силу между шариками
 	double f = F(r);
 
 	// Изменили значения сил для каждого из шариков
-	b1.Fx += f * dx / r;
-	b2.Fx -= f * dx / r;
-	b1.Fy += f * dy / r;
-	b2.Fy -= f * dy / r;
+	for (int i = 0; i < b1.coordinates.size(); i++) {
+		b1.forces[i] += f * d_distance[i] / r;
+		b2.forces[i] -= f * d_distance[i] / r;
+	}
 }
 
 void calculateBondForces(Ball& b1, Ball& b2, double size) {
-	// Посчитали dx и dy
-	double dx = b2.m_x - b1.m_x;
-	double dy = b2.m_y - b1.m_y;
+	// Посчитали dx и dy и fz
 
-	if (dx < -size / 2.0) dx = dx + size;
-	if (dx > size / 2.0) dx = dx - size;
+	vector<double> d_distance = getDistance(b2.coordinates, b1.coordinates);
 
-	if (dy < -size / 2.0) dy = dy + size;
-	if (dy > size / 2.0) dy = dy - size;
+	checkBorderConditions(d_distance, size);
+
 	// Посчитали правильно расстояние между шариками
-	double r = calculateDistance(dx, dy);
+	double r = calculateDistance(d_distance);
 
 	// Посчитали силу между шариками
 	double f = FBond(r);
 
 	// Изменили значения сил для каждого из шариков
-	b1.Fx += f * dx / r;
-	b2.Fx -= f * dx / r;
-	b1.Fy += f * dy / r;
-	b2.Fy -= f * dy / r;
+	for (int i = 0; i < b1.coordinates.size(); i++) {
+		b1.randomForces[i] += f * d_distance[i] / r;
+		b2.randomForces[i] -= f * d_distance[i] / r;
+	}
 }
 
 // Генерируем случайные силы для шарика
 void generateRandomForces(Ball& b) {
-	b.Rx = 2.0 * rand() / RAND_MAX - 1.0;
-	b.Ry = 2.0 * rand() / RAND_MAX - 1.0;
+	// b.Rx = 2.0 * rand() / RAND_MAX - 1.0;
+	// b.Ry = 2.0 * rand() / RAND_MAX - 1.0;
+	for_each(b.randomForces.begin(), b.randomForces.end(), [](double& cord) {
+		cord = 2.0 * rand() / RAND_MAX - 1.0;
+	});
 }
 
 // Функция для расчета новых координат
 void changeCoordinates(Ball& b, double size) {
 	// Изменяем значение координат в зависимости от сил
-	b.m_x += b.Fx * constants::STEP / constants::KSI + constants::LAMBDA * b.Rx;
-	b.m_y += b.Fy * constants::STEP / constants::KSI + constants::LAMBDA * b.Ry;
+	for (int i = 0; i < b.coordinates.size(); i++) {
+		b.coordinates[i] = b.forces[i] * constants::STEP / constants::KSI + constants::LAMBDA * b.randomForces[i];
+	}
 
-	// Проверка на граничные условия по x
-	if (b.m_x < 0) b.m_x += size;
-	if (b.m_x > size) b.m_x -= size;
+	checkBorderConditions(b.coordinates, size);
 
-	// Проверка на граничные условия по y
-	if (b.m_y < 0) b.m_y += size;
-	if (b.m_y > size) b.m_y -= size;
 }
 
 // Зануляем силы у щарика
 void nullifyForces(Ball& b) {
-	b.Fx = 0;
-	b.Fy = 0;
+	b.forces = { 0, 0, 0 };
 }
 
 // Выводим в файл координаты каждого шарика в отдельной строке
 void printCoordinates(FILE* file, Box& box) {
 	for (auto& ball : box.balls) {
-		fprintf(file, "%f %f\n", ball.m_x, ball.m_y);
+		fprintf(file, "%f %f %f\n", ball.coordinates[0], ball.coordinates[1], ball.coordinates[2]);
 	}
 }
 
@@ -224,8 +230,9 @@ int main()
 
 	// Заполнили ее молекулами
 	Ball firstBall;
-	firstBall.m_x = (rand() / (static_cast<double>(RAND_MAX) + 1.0)) * box.m_size;
-	firstBall.m_y = (rand() / (static_cast<double>(RAND_MAX) + 1.0)) * box.m_size;
+	for_each(firstBall.coordinates.begin(), firstBall.coordinates.begin(), [size = box.m_size](double& cord) {
+		cord = (rand() / (static_cast<double>(RAND_MAX) + 1.0)) * size;
+	});
 	box.balls.push_back(firstBall);
 
 	for (int i = 0; i < amount - 1; i++)
