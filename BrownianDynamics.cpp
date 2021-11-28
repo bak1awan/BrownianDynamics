@@ -181,9 +181,9 @@ void calculateBondForces(Ball& b1, Ball& b2, double size) {
 	double f = FBond(r);
 
 	// Изменили значения сил для каждого из шариков
-	for (int i = 0; i < b1.coordinates.size(); i++) {
-		b1.randomForces[i] += f * d_distance[i] / r;
-		b2.randomForces[i] -= f * d_distance[i] / r;
+	for (int i = 0; i < b1.randomForces.size(); i++) {
+		b1.forces[i] += f * d_distance[i] / r;
+		b2.forces[i] -= f * d_distance[i] / r;
 	}
 }
 
@@ -191,6 +191,11 @@ void calculateBondForces(Ball& b1, Ball& b2, double size) {
 void generateRandomForces(Ball& b) {
 	// b.Rx = 2.0 * rand() / RAND_MAX - 1.0;
 	// b.Ry = 2.0 * rand() / RAND_MAX - 1.0;
+	/*
+	for (int i = 0; i < b.randomForces.size(); i++) {
+		b.randomForces[i] = 2.0 * rand() / RAND_MAX - 1.0;
+	}
+	*/
 	for_each(b.randomForces.begin(), b.randomForces.end(), [](double& cord) {
 		cord = 2.0 * rand() / RAND_MAX - 1.0;
 	});
@@ -230,9 +235,10 @@ int main()
 
 	// Заполнили ее молекулами
 	Ball firstBall;
-	for_each(firstBall.coordinates.begin(), firstBall.coordinates.begin(), [size = box.m_size](double& cord) {
+	for_each(firstBall.coordinates.begin(), firstBall.coordinates.end(), [size = box.m_size](double& cord) {
 		cord = (rand() / (static_cast<double>(RAND_MAX) + 1.0)) * size;
 	});
+
 	box.balls.push_back(firstBall);
 
 	for (int i = 0; i < amount - 1; i++)
